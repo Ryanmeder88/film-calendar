@@ -2,6 +2,7 @@ import express from 'express';
 import { createProxyMiddleware } from 'http-proxy-middleware';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { existsSync } from 'fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
@@ -12,6 +13,9 @@ const OMDB_KEY   = process.env.OMDB_API_KEY;
 
 if (!TMDB_TOKEN) console.warn('Warning: TMDB_ACCESS_TOKEN not set');
 if (!OMDB_KEY)   console.warn('Warning: OMDB_API_KEY not set');
+
+const distPath = join(__dirname, 'dist');
+console.log(`Serving static files from: ${distPath} (exists: ${existsSync(distPath)})`);
 
 // Proxy /tmdb-api → https://api.themoviedb.org/3
 app.use('/tmdb-api', createProxyMiddleware({
@@ -33,11 +37,11 @@ app.use('/omdb-api', createProxyMiddleware({
 }));
 
 // Serve Vite build output
-app.use(express.static(join(__dirname, 'dist')));
+app.use(express.static(distPath));
 
-// SPA fallback — all other routes serve index.html
-app.get('*', (_req, res) => {
-  res.sendFile(join(__dirname, 'dist', 'index.html'));
+// SPA fallback — send index.html for all unmatched routes
+app.use((_req, res) => {
+  res.sendFile(join(distPath, 'index.html'));
 });
 
 app.listen(PORT, () => {

@@ -61,11 +61,23 @@ const BASE_THEATRICAL_PARAMS =
 
 const EXCLUDE_GENRES = new Set([99, 10770]); // Documentary, TV Movie
 
-// Theatrical: discover (wide + limited) for new releases, upcoming for re-releases
+// Params for supplementary query: no region, no runtime filter (far-future films have runtime=0)
+const SUPP_PARAMS =
+  `&with_original_language=en&without_genres=99,10770` +
+  `&sort_by=popularity.desc&popularity.gte=${THEATRICAL_MIN_POPULARITY}`;
+
+// Theatrical: discover (wide + limited) for new releases, upcoming for re-releases,
+// plus a supplementary primary_release_date query to catch far-future confirmed releases
+// that TMDB hasn't yet indexed under with_release_type=3&region=US (runtime=0 gap).
 async function fetchTheatrical(windowStart, cutoff) {
   const dateRange = `&release_date.gte=${dateStr(windowStart)}&release_date.lte=${dateStr(cutoff)}`;
 
-  const [wideResults, limitedResults, upcomingResults] = await Promise.all([
+  // Extend supplementary window 14 days earlier to catch films whose primary release date
+  // is slightly before the window but whose US theatrical date falls within it (e.g. Minions).
+  const suppStart = new Date(windowStart.getTime() - 14 * 24 * 60 * 60 * 1000);
+  const suppDateRange = `&primary_release_date.gte=${dateStr(suppStart)}&primary_release_date.lte=${dateStr(cutoff)}`;
+
+  const [wideResults, limitedResults, upcomingResults, suppResults] = await Promise.all([
     Promise.allSettled([1, 2, 3].map(page =>
       limit(() => tmdbGet(`/discover/movie?with_release_type=3${BASE_THEATRICAL_PARAMS}${dateRange}&page=${page}`))
     )),
@@ -74,6 +86,9 @@ async function fetchTheatrical(windowStart, cutoff) {
     )),
     Promise.allSettled([1, 2, 3].map(page =>
       limit(() => tmdbGet(`/movie/upcoming?language=en-US&region=US&page=${page}`))
+    )),
+    Promise.allSettled([1, 2, 3, 4].map(page =>
+      limit(() => tmdbGet(`/discover/movie?${SUPP_PARAMS}${suppDateRange}&page=${page}`))
     )),
   ]);
 
@@ -109,11 +124,26 @@ async function fetchTheatrical(windowStart, cutoff) {
     if (!allIds.has(m.id)) { allIds.add(m.id); rereleaseMerged.push(m); }
   }
 
-  return [...discoverMerged, ...rereleaseMerged]
+  // Supplementary: films found via primary_release_date not already in any other query.
+  // These lack runtime data in TMDB so they bypass the runtime filter here;
+  // the release_dates verification step in fetchAllFilms gates them instead.
+  const supplementary = suppResults
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value.results ?? [])
+    .filter(m => !allIds.has(m.id))
+    .map(m => ({ ...m, _tmdbType: 3, _supplementaryOnly: true }));
+
+  const suppIds = new Set();
+  const suppMerged = [];
+  for (const m of supplementary) {
+    if (!suppIds.has(m.id)) { suppIds.add(m.id); suppMerged.push(m); }
+  }
+
+  return [...discoverMerged, ...rereleaseMerged, ...suppMerged]
     .filter(m => m.popularity >= THEATRICAL_MIN_POPULARITY)
     .map(m => {
       const originalDate = new Date(m.release_date + 'T00:00:00');
-      const isRerelease = originalDate < windowStart;
+      const isRerelease = !m._supplementaryOnly && originalDate < windowStart;
       const releaseType = isRerelease
         ? 'theatrical-rerelease'
         : m._tmdbType === 3 ? 'theatrical-wide' : 'theatrical-limited';
@@ -201,11 +231,27 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       const genres = resolveGenres(m.genre_ids);
       const primaryGenre = genres[0] ?? 'Film';
 
-      const releaseType = m._releaseType;
-      const usDate = releaseType === 'theatrical-rerelease'
-        ? parseUsRereleaseDate(releaseDates, windowStart, cutoff)
-        : parseUsReleaseDate(releaseDates, m._tmdbType ?? 3);
-      const date = usDate ?? new Date(m.release_date + 'T00:00:00');
+      let releaseType = m._releaseType;
+      let date;
+
+      if (m._supplementaryOnly) {
+        // Gate: must have a confirmed US type-2 or type-3 date within the window.
+        // This filters out international-only or streaming-first films.
+        const usRelDates = releaseDates.find(r => r.iso_3166_1 === 'US')?.release_dates ?? [];
+        const usEntry = usRelDates.find(d => {
+          if (d.type !== 2 && d.type !== 3) return false;
+          const dd = new Date(d.release_date.slice(0, 10) + 'T00:00:00');
+          return dd >= windowStart && dd <= cutoff;
+        });
+        if (!usEntry) return null; // no confirmed US theatrical in window — skip
+        date = new Date(usEntry.release_date.slice(0, 10) + 'T00:00:00');
+        releaseType = usEntry.type === 2 ? 'theatrical-limited' : 'theatrical-wide';
+      } else {
+        const usDate = releaseType === 'theatrical-rerelease'
+          ? parseUsRereleaseDate(releaseDates, windowStart, cutoff)
+          : parseUsReleaseDate(releaseDates, m._tmdbType ?? 3);
+        date = usDate ?? new Date(m.release_date + 'T00:00:00');
+      }
 
       const platform = releaseType === 'theatrical-limited'
         ? 'In Theaters (Limited)'
@@ -240,6 +286,7 @@ export async function fetchAllFilms(anchorDate = new Date()) {
     });
 
   return events
+    .filter(Boolean)
     .filter(e => e.date >= windowStart && e.date <= cutoff)
     .sort((a, b) => a.date - b.date);
 }

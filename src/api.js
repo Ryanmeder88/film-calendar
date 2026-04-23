@@ -169,6 +169,7 @@ async function fetchCertifications(movieIds) {
         tagline: r.value.tagline || null,
         backdropPath: r.value.backdrop_path ?? null,
         imdbId: r.value.imdb_id ?? null,
+        budget: r.value.budget > 0 ? r.value.budget : null,
       };
     }
   }
@@ -224,7 +225,7 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       return !runtime || runtime >= 40;
     })
     .map(m => {
-      const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null } = certMap[m.id] ?? {};
+      const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
       const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
       const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;
       const rating = parseUsCertification(releaseDates);
@@ -275,6 +276,7 @@ export async function fetchAllFilms(anchorDate = new Date()) {
         tagline,
         backdropPath,
         runtime: certMap[m.id]?.runtime ?? null,
+        budget,
         rtScore,
         imdbRating,
         metascore,

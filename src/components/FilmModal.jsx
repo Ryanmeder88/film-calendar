@@ -114,9 +114,9 @@ export default function FilmModal({ film, onClose }) {
                   {film.rating}
                 </span>
               )}
-              {film.runtime && (
-                <span className="modal-chip-neutral">{film.runtime} min</span>
-              )}
+              <span className="modal-chip-neutral">
+                {film.runtime > 0 ? `${film.runtime} min` : 'Runtime TBD'}
+              </span>
               <span className="modal-chip-neutral">{film.platform}</span>
             </div>
 
@@ -160,6 +160,12 @@ export default function FilmModal({ film, onClose }) {
                       </span>
                     ))}
                   </dd>
+                </>
+              )}
+              {film.budget && (
+                <>
+                  <dt>Budget</dt>
+                  <dd>${film.budget.toLocaleString('en-US')}</dd>
                 </>
               )}
               {film.boxOffice && (

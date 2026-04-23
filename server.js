@@ -30,13 +30,31 @@ app.use('/tmdb-api', createProxyMiddleware({
   },
 }));
 
-// Proxy /omdb-api → http://www.omdbapi.com
-// Express strips /omdb-api, leaving /?i=tt1234567 — just append the key.
-app.use('/omdb-api', createProxyMiddleware({
-  target: 'http://www.omdbapi.com',
-  changeOrigin: true,
-  pathRewrite: (path) => path + `&apikey=${OMDB_KEY}`,
-}));
+// OMDB with in-memory cache — each IMDb ID is fetched at most once per 24 hours.
+// This keeps usage well under the free tier's 1,000 req/day limit.
+const omdbCache = new Map();
+const OMDB_TTL = 24 * 60 * 60 * 1000; // 24 hours
+
+app.get('/omdb-api', async (req, res) => {
+  const id = req.query.i;
+  if (!id) return res.status(400).json({ Response: 'False', Error: 'Missing ?i= parameter' });
+
+  const cached = omdbCache.get(id);
+  if (cached && Date.now() < cached.expiresAt) {
+    return res.json(cached.data);
+  }
+
+  try {
+    const upstream = await fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`);
+    const data = await upstream.json();
+    if (data.Response === 'True') {
+      omdbCache.set(id, { data, expiresAt: Date.now() + OMDB_TTL });
+    }
+    res.json(data);
+  } catch (err) {
+    res.status(502).json({ Response: 'False', Error: 'Upstream fetch failed' });
+  }
+});
 
 // Serve Vite build output
 app.use(express.static(distPath));

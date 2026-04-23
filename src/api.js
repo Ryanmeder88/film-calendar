@@ -61,25 +61,38 @@ const BASE_THEATRICAL_PARAMS =
 
 const EXCLUDE_GENRES = new Set([99, 10770]); // Documentary, TV Movie
 
-// Theatrical: discover by primary_release_date (catches all future releases TMDB knows about),
-// plus upcoming endpoint for re-releases. Wide vs limited is resolved later from release_dates detail.
+// Theatrical: discover (wide + limited) for new releases, upcoming for re-releases
 async function fetchTheatrical(windowStart, cutoff) {
-  const dateRange = `&primary_release_date.gte=${dateStr(windowStart)}&primary_release_date.lte=${dateStr(cutoff)}`;
+  const dateRange = `&release_date.gte=${dateStr(windowStart)}&release_date.lte=${dateStr(cutoff)}`;
 
-  const [discoverResults, upcomingResults] = await Promise.all([
-    Promise.allSettled([1, 2, 3, 4].map(page =>
-      limit(() => tmdbGet(`/discover/movie?${BASE_THEATRICAL_PARAMS.replace('&region=US', '')}${dateRange}&page=${page}`))
+  const [wideResults, limitedResults, upcomingResults] = await Promise.all([
+    Promise.allSettled([1, 2, 3].map(page =>
+      limit(() => tmdbGet(`/discover/movie?with_release_type=3${BASE_THEATRICAL_PARAMS}${dateRange}&page=${page}`))
+    )),
+    Promise.allSettled([1, 2].map(page =>
+      limit(() => tmdbGet(`/discover/movie?with_release_type=2${BASE_THEATRICAL_PARAMS}${dateRange}&page=${page}`))
     )),
     Promise.allSettled([1, 2, 3].map(page =>
       limit(() => tmdbGet(`/movie/upcoming?language=en-US&region=US&page=${page}`))
     )),
   ]);
 
-  const discovered = discoverResults
+  const wide = wideResults
     .filter(r => r.status === 'fulfilled')
-    .flatMap(r => r.value.results ?? []);
+    .flatMap(r => r.value.results ?? [])
+    .map(m => ({ ...m, _tmdbType: 3 }));
 
-  const discoverIds = new Set(discovered.map(m => m.id));
+  const limited = limitedResults
+    .filter(r => r.status === 'fulfilled')
+    .flatMap(r => r.value.results ?? [])
+    .map(m => ({ ...m, _tmdbType: 2 }));
+
+  // Discover: wide takes precedence over limited
+  const discoverIds = new Set();
+  const discoverMerged = [];
+  for (const m of [...wide, ...limited]) {
+    if (!discoverIds.has(m.id)) { discoverIds.add(m.id); discoverMerged.push(m); }
+  }
 
   // Upcoming: films NOT in discover whose original release_date predates our window = re-releases
   const upcoming = upcomingResults
@@ -87,7 +100,8 @@ async function fetchTheatrical(windowStart, cutoff) {
     .flatMap(r => r.value.results ?? [])
     .filter(m => !discoverIds.has(m.id))
     .filter(m => !m.genre_ids?.some(id => EXCLUDE_GENRES.has(id)))
-    .filter(m => new Date(m.release_date + 'T00:00:00') < windowStart);
+    .filter(m => new Date(m.release_date + 'T00:00:00') < windowStart)
+    .map(m => ({ ...m, _tmdbType: 3 }));
 
   const allIds = new Set(discoverIds);
   const rereleaseMerged = [];
@@ -95,13 +109,15 @@ async function fetchTheatrical(windowStart, cutoff) {
     if (!allIds.has(m.id)) { allIds.add(m.id); rereleaseMerged.push(m); }
   }
 
-  return [...discovered, ...rereleaseMerged]
+  return [...discoverMerged, ...rereleaseMerged]
     .filter(m => m.popularity >= THEATRICAL_MIN_POPULARITY)
     .map(m => {
       const originalDate = new Date(m.release_date + 'T00:00:00');
       const isRerelease = originalDate < windowStart;
-      // _tmdbType is resolved later from release_dates; default wide (3) for now
-      return { ...m, _tmdbType: 3, _isRerelease: isRerelease };
+      const releaseType = isRerelease
+        ? 'theatrical-rerelease'
+        : m._tmdbType === 3 ? 'theatrical-wide' : 'theatrical-limited';
+      return { ...m, _releaseType: releaseType };
     });
 }
 
@@ -185,19 +201,10 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       const genres = resolveGenres(m.genre_ids);
       const primaryGenre = genres[0] ?? 'Film';
 
-      // Determine wide (type 3) vs limited (type 2) from actual US release_dates
-      const usReleaseDates = releaseDates.find(r => r.iso_3166_1 === 'US')?.release_dates ?? [];
-      const hasWide    = usReleaseDates.some(r => r.type === 3);
-      const hasLimited = usReleaseDates.some(r => r.type === 2);
-      const tmdbType = hasWide ? 3 : hasLimited ? 2 : 3;
-
-      const releaseType = m._isRerelease
-        ? 'theatrical-rerelease'
-        : tmdbType === 3 ? 'theatrical-wide' : 'theatrical-limited';
-
-      const usDate = m._isRerelease
+      const releaseType = m._releaseType;
+      const usDate = releaseType === 'theatrical-rerelease'
         ? parseUsRereleaseDate(releaseDates, windowStart, cutoff)
-        : parseUsReleaseDate(releaseDates, tmdbType);
+        : parseUsReleaseDate(releaseDates, m._tmdbType ?? 3);
       const date = usDate ?? new Date(m.release_date + 'T00:00:00');
 
       const platform = releaseType === 'theatrical-limited'
@@ -205,7 +212,7 @@ export async function fetchAllFilms(anchorDate = new Date()) {
         : 'In Theaters';
 
       return {
-        key: `tmdb__${m.id}__${releaseType}__${dateStr(date)}`,
+        key: `tmdb__${m.id}__${releaseType}`,
         movieId: m.id,
         date,
         title: m.title,

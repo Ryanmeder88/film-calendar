@@ -17,11 +17,12 @@ if (!OMDB_KEY)   console.warn('Warning: OMDB_API_KEY not set');
 const distPath = join(__dirname, 'dist');
 console.log(`Serving static files from: ${distPath} (exists: ${existsSync(distPath)})`);
 
-// Proxy /tmdb-api → https://api.themoviedb.org/3
+// Proxy /tmdb-api/* → https://api.themoviedb.org/3/*
+// Express strips the /tmdb-api prefix before passing to the middleware,
+// so we put /3 in the target directly — no pathRewrite needed.
 app.use('/tmdb-api', createProxyMiddleware({
-  target: 'https://api.themoviedb.org',
+  target: 'https://api.themoviedb.org/3',
   changeOrigin: true,
-  pathRewrite: { '^/tmdb-api': '/3' },
   on: {
     proxyReq: (proxyReq) => {
       proxyReq.setHeader('Authorization', `Bearer ${TMDB_TOKEN}`);
@@ -30,10 +31,11 @@ app.use('/tmdb-api', createProxyMiddleware({
 }));
 
 // Proxy /omdb-api → http://www.omdbapi.com
+// Express strips /omdb-api, leaving /?i=tt1234567 — just append the key.
 app.use('/omdb-api', createProxyMiddleware({
   target: 'http://www.omdbapi.com',
   changeOrigin: true,
-  pathRewrite: (path) => path.replace(/^\/omdb-api/, '') + `&apikey=${OMDB_KEY}`,
+  pathRewrite: (path) => path + `&apikey=${OMDB_KEY}`,
 }));
 
 // Serve Vite build output

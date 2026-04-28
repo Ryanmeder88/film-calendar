@@ -8,11 +8,30 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const TMDB_TOKEN = process.env.TMDB_ACCESS_TOKEN;
-const OMDB_KEY   = process.env.OMDB_API_KEY;
+const TMDB_TOKEN    = process.env.TMDB_ACCESS_TOKEN;
+const OMDB_KEY      = process.env.OMDB_API_KEY;
+const UPSTASH_URL   = process.env.UPSTASH_REDIS_REST_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
-if (!TMDB_TOKEN) console.warn('Warning: TMDB_ACCESS_TOKEN not set');
-if (!OMDB_KEY)   console.warn('Warning: OMDB_API_KEY not set');
+if (!TMDB_TOKEN)    console.warn('Warning: TMDB_ACCESS_TOKEN not set');
+if (!OMDB_KEY)      console.warn('Warning: OMDB_API_KEY not set');
+if (!UPSTASH_URL)   console.warn('Warning: UPSTASH_REDIS_REST_URL not set — agent scores unavailable');
+
+// Upstash Redis lookup (agent-sourced RT scores)
+async function upstashGet(key) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
+  try {
+    const res = await fetch(UPSTASH_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['GET', key]),
+    });
+    const { result } = await res.json();
+    return result ? JSON.parse(result) : null;
+  } catch {
+    return null;
+  }
+}
 
 const distPath = join(__dirname, 'dist');
 console.log(`Serving static files from: ${distPath} (exists: ${existsSync(distPath)})`);
@@ -47,6 +66,20 @@ app.get('/omdb-api', async (req, res) => {
   try {
     const upstream = await fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`);
     const data = await upstream.json();
+
+    // If OMDB has no RT score, check Upstash for an agent-sourced score
+    const hasRtScore = data.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
+    if (!hasRtScore) {
+      const agent = await upstashGet(`rt:${id}`);
+      if (agent?.tomatometer != null) {
+        if (!data.Ratings) data.Ratings = [];
+        data.Ratings.push({ Source: 'Rotten Tomatoes', Value: `${agent.tomatometer}%` });
+        if (agent.audienceScore != null) {
+          data._rtAudienceScore = `${agent.audienceScore}%`;
+        }
+      }
+    }
+
     if (data.Response === 'True') {
       omdbCache.set(id, { data, expiresAt: Date.now() + OMDB_TTL });
     }

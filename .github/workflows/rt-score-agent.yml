@@ -1,0 +1,26 @@
+name: RT Score Agent
+
+on:
+  schedule:
+    # Runs every night at 2am UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  fetch-scores:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run RT score agent
+        env:
+          TMDB_ACCESS_TOKEN:       ${{ secrets.TMDB_ACCESS_TOKEN }}
+          GEMINI_API_KEY:          ${{ secrets.GEMINI_API_KEY }}
+          UPSTASH_REDIS_REST_URL:  ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: node agent/fetch-rt-scores.js

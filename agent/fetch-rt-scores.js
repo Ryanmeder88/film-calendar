@@ -97,10 +97,11 @@ async function queryRtScore(title, year, attempt = 0) {
       messages: [{
         role: 'user',
         content:
-          `What are the current Rotten Tomatoes scores for the movie "${title}" (${year})? ` +
+          `What are the current Rotten Tomatoes and Metacritic scores for the movie "${title}" (${year})? ` +
           `Reply in exactly this format and nothing else:\n` +
           `Tomatometer: [number or N/A]\n` +
-          `Audience Score: [number or N/A]`,
+          `Audience Score: [number or N/A]\n` +
+          `Metascore: [number or N/A]`,
       }],
     }),
   });
@@ -128,11 +129,13 @@ async function queryRtScore(title, year, attempt = 0) {
 function parseScores(text) {
   const tomatoMatch   = text.match(/Tomatometer:\s*(\d+|N\/A)/i);
   const audienceMatch = text.match(/Audience Score:\s*(\d+|N\/A)/i);
+  const metaMatch     = text.match(/Metascore:\s*(\d+|N\/A)/i);
 
-  const tomatometer   = tomatoMatch?.[1]   === 'N/A' ? null : parseInt(tomatoMatch?.[1],   10) || null;
-  const audienceScore = audienceMatch?.[1]  === 'N/A' ? null : parseInt(audienceMatch?.[1], 10) || null;
+  const tomatometer   = tomatoMatch?.[1]  === 'N/A' ? null : parseInt(tomatoMatch?.[1],  10) || null;
+  const audienceScore = audienceMatch?.[1] === 'N/A' ? null : parseInt(audienceMatch?.[1], 10) || null;
+  const metascore     = metaMatch?.[1]    === 'N/A' ? null : parseInt(metaMatch?.[1],    10) || null;
 
-  return { tomatometer, audienceScore };
+  return { tomatometer, audienceScore, metascore };
 }
 
 // ---------------------------------------------------------------------------
@@ -168,17 +171,21 @@ async function main() {
     console.log(`  FETCH ${film.title} (${year})...`);
 
     try {
-      const { tomatometer, audienceScore } = await queryRtScore(film.title, year);
+      const { tomatometer, audienceScore, metascore } = await queryRtScore(film.title, year);
 
-      if (tomatometer !== null) {
+      if (tomatometer !== null || metascore !== null) {
         // Cache confirmed score for 7 days (scores don't change much once published)
         await redisSet(cacheKey, {
           tomatometer,
           audienceScore,
+          metascore,
           source: 'agent',
           lastChecked: Date.now(),
         }, 7 * 24 * 60 * 60);
-        console.log(`    ✓ Tomatometer: ${tomatometer}%${audienceScore != null ? `, Audience: ${audienceScore}%` : ''}`);
+        const parts = [];
+        if (tomatometer != null) parts.push(`RT: ${tomatometer}%`);
+        if (metascore != null)   parts.push(`MC: ${metascore}`);
+        console.log(`    ✓ ${parts.join(', ')}`);
         fetched++;
       } else {
         // No score yet — cache the miss for 6 hours so we retry later

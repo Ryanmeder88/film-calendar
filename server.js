@@ -67,15 +67,19 @@ app.get('/omdb-api', async (req, res) => {
     const upstream = await fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`);
     const data = await upstream.json();
 
-    // If OMDB has no RT score, check Upstash for an agent-sourced score
-    const hasRtScore = data.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
-    if (!hasRtScore) {
+    // If OMDB is missing RT or Metacritic scores, check Upstash for agent-sourced scores
+    const hasRtScore   = data.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
+    const hasMetascore = data.Metascore && data.Metascore !== 'N/A';
+    if (!hasRtScore || !hasMetascore) {
       const agent = await upstashGet(`rt:${id}`);
-      if (agent?.tomatometer != null) {
-        if (!data.Ratings) data.Ratings = [];
-        data.Ratings.push({ Source: 'Rotten Tomatoes', Value: `${agent.tomatometer}%` });
-        if (agent.audienceScore != null) {
-          data._rtAudienceScore = `${agent.audienceScore}%`;
+      if (agent) {
+        if (!hasRtScore && agent.tomatometer != null) {
+          if (!data.Ratings) data.Ratings = [];
+          data.Ratings.push({ Source: 'Rotten Tomatoes', Value: `${agent.tomatometer}%` });
+          if (agent.audienceScore != null) data._rtAudienceScore = `${agent.audienceScore}%`;
+        }
+        if (!hasMetascore && agent.metascore != null) {
+          data.Metascore = String(agent.metascore);
         }
       }
     }

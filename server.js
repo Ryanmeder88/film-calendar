@@ -17,7 +17,7 @@ if (!TMDB_TOKEN)    console.warn('Warning: TMDB_ACCESS_TOKEN not set');
 if (!OMDB_KEY)      console.warn('Warning: OMDB_API_KEY not set');
 if (!UPSTASH_URL)   console.warn('Warning: UPSTASH_REDIS_REST_URL not set — agent scores unavailable');
 
-// Upstash Redis lookup (agent-sourced RT scores)
+// Upstash Redis helpers
 async function upstashGet(key) {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return null;
   try {
@@ -30,6 +30,19 @@ async function upstashGet(key) {
     return result ? JSON.parse(result) : null;
   } catch {
     return null;
+  }
+}
+
+async function upstashSet(key, value, ttlSeconds) {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  try {
+    await fetch(UPSTASH_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)]),
+    });
+  } catch {
+    // Non-fatal — cache write failure shouldn't break the response
   }
 }
 
@@ -49,25 +62,24 @@ app.use('/tmdb-api', createProxyMiddleware({
   },
 }));
 
-// OMDB with in-memory cache — each IMDb ID is fetched at most once per 24 hours.
-// This keeps usage well under the free tier's 1,000 req/day limit.
-const omdbCache = new Map();
-const OMDB_TTL = 24 * 60 * 60 * 1000; // 24 hours
+// OMDB with Upstash cache — persists across server restarts (Render spin-downs).
+// Each IMDb ID is fetched from OMDB at most once per 24 hours.
+const OMDB_TTL = 24 * 60 * 60; // 24 hours in seconds
 
 app.get('/omdb-api', async (req, res) => {
   const id = req.query.i;
   if (!id) return res.status(400).json({ Response: 'False', Error: 'Missing ?i= parameter' });
 
-  const cached = omdbCache.get(id);
-  if (cached && Date.now() < cached.expiresAt) {
-    return res.json(cached.data);
-  }
+  // Check Upstash for cached OMDB response (survives server restarts)
+  const cached = await upstashGet(`omdb:${id}`);
+  if (cached) return res.json(cached);
 
   try {
-    // Check Upstash first — agent-sourced scores are always available regardless of OMDB status
-    const agent = await upstashGet(`rt:${id}`);
-
-    const upstream = await fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`);
+    // Fetch agent scores and OMDB data in parallel
+    const [agent, upstream] = await Promise.all([
+      upstashGet(`rt:${id}`),
+      fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`),
+    ]);
     const data = await upstream.json();
 
     if (data.Response === 'True') {
@@ -84,7 +96,7 @@ app.get('/omdb-api', async (req, res) => {
           data.Metascore = String(agent.metascore);
         }
       }
-      omdbCache.set(id, { data, expiresAt: Date.now() + OMDB_TTL });
+      await upstashSet(`omdb:${id}`, data, OMDB_TTL);
       return res.json(data);
     }
 
@@ -96,6 +108,7 @@ app.get('/omdb-api', async (req, res) => {
         if (agent.audienceScore != null) agentData._rtAudienceScore = `${agent.audienceScore}%`;
       }
       if (agent.metascore != null) agentData.Metascore = String(agent.metascore);
+      await upstashSet(`omdb:${id}`, agentData, OMDB_TTL);
       return res.json(agentData);
     }
 

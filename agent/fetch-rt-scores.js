@@ -163,28 +163,41 @@ async function main() {
   console.log(`RT Score Agent — ${new Date().toISOString()}`);
 
   // Single-film mode: triggered manually with a specific film
-  const singleImdbId = process.env.IMDB_ID?.trim();
-  const singleTitle  = process.env.FILM_TITLE?.trim();
+  const singleImdbId = process.env.IMDB_ID?.trim() || null;
+  const singleTitle  = process.env.FILM_TITLE?.trim() || null;
 
-  if (singleImdbId && singleTitle) {
-    const year = new Date().getFullYear();
-    await fetchSingleFilm(singleImdbId, singleTitle, year);
-    return;
-  }
+  console.log(`Mode: ${singleImdbId || singleTitle ? 'single-film' : 'full-scan'} | title="${singleTitle ?? ''}" | imdb="${singleImdbId ?? ''}"`);
 
-  if (singleTitle) {
-    // Look up IMDb ID via TMDB search
-    const res = await fetch(
-      `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(singleTitle)}&language=en-US`,
-      { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } }
-    );
-    const json = await res.json();
-    const match = json.results?.[0];
-    if (!match) { console.error(`No TMDB result for "${singleTitle}"`); process.exit(1); }
-    const details = await tmdbGet(`/movie/${match.id}`);
-    if (!details.imdb_id) { console.error(`No IMDb ID for "${singleTitle}"`); process.exit(1); }
-    const year = match.release_date?.slice(0, 4) ?? String(new Date().getFullYear());
-    await fetchSingleFilm(details.imdb_id, match.title, year);
+  if (singleImdbId || singleTitle) {
+    if (singleImdbId && singleTitle) {
+      // Have both — skip TMDB lookup entirely
+      const year = new Date().getFullYear();
+      await fetchSingleFilm(singleImdbId, singleTitle, year);
+    } else if (singleTitle) {
+      // Title only — search TMDB for IMDb ID
+      const res = await fetch(
+        `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(singleTitle)}&language=en-US`,
+        { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } }
+      );
+      const json = await res.json();
+      const match = json.results?.[0];
+      if (!match) { console.error(`No TMDB result for "${singleTitle}"`); process.exit(1); }
+      const details = await tmdbGet(`/movie/${match.id}`);
+      if (!details.imdb_id) { console.error(`No IMDb ID for "${singleTitle}"`); process.exit(1); }
+      const year = match.release_date?.slice(0, 4) ?? String(new Date().getFullYear());
+      await fetchSingleFilm(details.imdb_id, match.title, year);
+    } else {
+      // IMDb ID only — look up title from TMDB
+      const res = await fetch(
+        `https://api.themoviedb.org/3/find/${singleImdbId}?external_source=imdb_id`,
+        { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } }
+      );
+      const json = await res.json();
+      const match = json.movie_results?.[0];
+      if (!match) { console.error(`No TMDB result for IMDb ID "${singleImdbId}"`); process.exit(1); }
+      const year = match.release_date?.slice(0, 4) ?? String(new Date().getFullYear());
+      await fetchSingleFilm(singleImdbId, match.title, year);
+    }
     return;
   }
 

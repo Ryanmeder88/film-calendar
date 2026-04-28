@@ -81,7 +81,7 @@ async function getFilmsInWindow() {
 // Claude with web_search tool
 // ---------------------------------------------------------------------------
 
-async function queryRtScore(title, year) {
+async function queryRtScore(title, year, attempt = 0) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -104,6 +104,15 @@ async function queryRtScore(title, year) {
       }],
     }),
   });
+
+  if (res.status === 429 && attempt < 4) {
+    // Respect the retry-after header if present, otherwise back off 60s
+    const retryAfter = res.headers.get('retry-after') ?? res.headers.get('anthropic-ratelimit-requests-reset');
+    const waitMs = retryAfter ? (parseFloat(retryAfter) + 1) * 1000 : 60000;
+    console.log(`    Rate limited — waiting ${Math.round(waitMs / 1000)}s...`);
+    await new Promise(r => setTimeout(r, waitMs));
+    return queryRtScore(title, year, attempt + 1);
+  }
 
   if (!res.ok) {
     const err = await res.text();
@@ -185,8 +194,8 @@ async function main() {
       console.error(`    ERROR for ${film.title}: ${err.message}`);
     }
 
-    // Small delay to be a polite API citizen
-    await new Promise(r => setTimeout(r, 500));
+    // 3s between requests to stay under the 50k token/min new-account limit
+    await new Promise(r => setTimeout(r, 3000));
   }
 
   console.log(`\nDone. Fetched: ${fetched} | Already cached: ${skipped} | No score yet: ${noScore}`);

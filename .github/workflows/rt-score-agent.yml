@@ -2,8 +2,8 @@ name: RT Score Agent
 
 on:
   schedule:
-    # Runs every night at 2am UTC
-    - cron: '0 2 * * *'
+    # Runs every Thursday at 6am UTC (ahead of Friday wide releases)
+    - cron: '0 6 * * 4'
   workflow_dispatch:
     # Allow manual trigger from GitHub Actions UI
 

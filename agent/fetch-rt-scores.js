@@ -142,9 +142,53 @@ function parseScores(text) {
 // Main
 // ---------------------------------------------------------------------------
 
+async function fetchSingleFilm(imdbId, title, year) {
+  const cacheKey = `rt:${imdbId}`;
+  console.log(`Single-film mode: ${title} (${year}) — ${imdbId}`);
+
+  const { tomatometer, audienceScore, metascore } = await queryRtScore(title, year);
+
+  if (tomatometer !== null || metascore !== null) {
+    await redisSet(cacheKey, { tomatometer, audienceScore, metascore, source: 'agent', lastChecked: Date.now() }, 7 * 24 * 60 * 60);
+    const parts = [];
+    if (tomatometer != null) parts.push(`RT: ${tomatometer}%`);
+    if (metascore != null)   parts.push(`MC: ${metascore}`);
+    console.log(`  ✓ ${parts.join(', ')}`);
+  } else {
+    console.log(`  ✗ No scores found`);
+  }
+}
+
 async function main() {
   console.log(`RT Score Agent — ${new Date().toISOString()}`);
 
+  // Single-film mode: triggered manually with a specific film
+  const singleImdbId = process.env.IMDB_ID?.trim();
+  const singleTitle  = process.env.FILM_TITLE?.trim();
+
+  if (singleImdbId && singleTitle) {
+    const year = new Date().getFullYear();
+    await fetchSingleFilm(singleImdbId, singleTitle, year);
+    return;
+  }
+
+  if (singleTitle) {
+    // Look up IMDb ID via TMDB search
+    const res = await fetch(
+      `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(singleTitle)}&language=en-US`,
+      { headers: { Authorization: `Bearer ${TMDB_TOKEN}` } }
+    );
+    const json = await res.json();
+    const match = json.results?.[0];
+    if (!match) { console.error(`No TMDB result for "${singleTitle}"`); process.exit(1); }
+    const details = await tmdbGet(`/movie/${match.id}`);
+    if (!details.imdb_id) { console.error(`No IMDb ID for "${singleTitle}"`); process.exit(1); }
+    const year = match.release_date?.slice(0, 4) ?? String(new Date().getFullYear());
+    await fetchSingleFilm(details.imdb_id, match.title, year);
+    return;
+  }
+
+  // Full window scan
   const films = await getFilmsInWindow();
   console.log(`Films in window: ${films.length}`);
 

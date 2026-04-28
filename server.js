@@ -64,14 +64,16 @@ app.get('/omdb-api', async (req, res) => {
   }
 
   try {
+    // Check Upstash first — agent-sourced scores are always available regardless of OMDB status
+    const agent = await upstashGet(`rt:${id}`);
+
     const upstream = await fetch(`http://www.omdbapi.com/?i=${encodeURIComponent(id)}&apikey=${OMDB_KEY}`);
     const data = await upstream.json();
 
-    // If OMDB is missing RT or Metacritic scores, check Upstash for agent-sourced scores
-    const hasRtScore   = data.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
-    const hasMetascore = data.Metascore && data.Metascore !== 'N/A';
-    if (!hasRtScore || !hasMetascore) {
-      const agent = await upstashGet(`rt:${id}`);
+    if (data.Response === 'True') {
+      // Inject any agent scores OMDB is missing
+      const hasRtScore   = data.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
+      const hasMetascore = data.Metascore && data.Metascore !== 'N/A';
       if (agent) {
         if (!hasRtScore && agent.tomatometer != null) {
           if (!data.Ratings) data.Ratings = [];
@@ -82,11 +84,21 @@ app.get('/omdb-api', async (req, res) => {
           data.Metascore = String(agent.metascore);
         }
       }
+      omdbCache.set(id, { data, expiresAt: Date.now() + OMDB_TTL });
+      return res.json(data);
     }
 
-    if (data.Response === 'True') {
-      omdbCache.set(id, { data, expiresAt: Date.now() + OMDB_TTL });
+    // OMDB failed (rate limit, unknown ID, etc.) — return agent scores if we have them
+    if (agent?.tomatometer != null || agent?.metascore != null) {
+      const agentData = { Response: 'True', Ratings: [], Metascore: 'N/A' };
+      if (agent.tomatometer != null) {
+        agentData.Ratings.push({ Source: 'Rotten Tomatoes', Value: `${agent.tomatometer}%` });
+        if (agent.audienceScore != null) agentData._rtAudienceScore = `${agent.audienceScore}%`;
+      }
+      if (agent.metascore != null) agentData.Metascore = String(agent.metascore);
+      return res.json(agentData);
     }
+
     res.json(data);
   } catch (err) {
     res.status(502).json({ Response: 'False', Error: 'Upstream fetch failed' });

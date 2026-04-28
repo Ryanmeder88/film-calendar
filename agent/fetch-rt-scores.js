@@ -121,8 +121,8 @@ async function queryRtScore(title, year, attempt = 0) {
   }
 
   const data = await res.json();
-  // Find the final text block (may follow tool_use blocks)
-  const text = [...(data.content ?? [])].reverse().find(b => b.type === 'text')?.text ?? '';
+  // Concatenate all text blocks — the response can be split across multiple blocks
+  const text = (data.content ?? []).filter(b => b.type === 'text').map(b => b.text).join('');
   return parseScores(text);
 }
 

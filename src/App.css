@@ -657,7 +657,10 @@ body {
   white-space: nowrap;
 }
 .sl-rt-fresh  { color: #e8320a; }
-.sl-rt-rotten { color: #8b5e3c; }
+.sl-rt-rotten { color: #15803d; }
+.sl-rt-rotten .rt-icon,
+.event-rt.rt-rotten .rt-icon,
+.modal-score.rt.rt-rotten .rt-icon { filter: hue-rotate(100deg) saturate(1.5); }
 
 .sl-mc {
   font-size: 10px;

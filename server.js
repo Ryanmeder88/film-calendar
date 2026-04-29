@@ -72,7 +72,29 @@ app.get('/omdb-api', async (req, res) => {
 
   // Check Upstash for cached OMDB response (survives server restarts)
   const cached = await upstashGet(`omdb:${id}`);
-  if (cached) return res.json(cached);
+  if (cached) {
+    // Even when cached, check if agent has scores we didn't have at cache time
+    const hasRtScore   = cached.Ratings?.some(r => r.Source === 'Rotten Tomatoes');
+    const hasMetascore = cached.Metascore && cached.Metascore !== 'N/A';
+    if (!hasRtScore || !hasMetascore) {
+      const agent = await upstashGet(`rt:${id}`);
+      if (agent) {
+        let updated = false;
+        if (!hasRtScore && agent.tomatometer != null) {
+          if (!cached.Ratings) cached.Ratings = [];
+          cached.Ratings.push({ Source: 'Rotten Tomatoes', Value: `${agent.tomatometer}%` });
+          if (agent.audienceScore != null) cached._rtAudienceScore = `${agent.audienceScore}%`;
+          updated = true;
+        }
+        if (!hasMetascore && agent.metascore != null) {
+          cached.Metascore = String(agent.metascore);
+          updated = true;
+        }
+        if (updated) await upstashSet(`omdb:${id}`, cached, OMDB_TTL);
+      }
+    }
+    return res.json(cached);
+  }
 
   try {
     // Fetch agent scores and OMDB data in parallel

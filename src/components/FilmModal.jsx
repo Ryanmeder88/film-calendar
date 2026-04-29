@@ -55,7 +55,7 @@ const FILM_LINKS = [
   {
     key: 'fandango',
     label: 'Fandango',
-    color: '#e8168a',
+    color: '#4692e3',
     url: (title) =>
       `https://www.fandango.com/search?q=${encodeURIComponent(title)}&mode=movies`,
   },

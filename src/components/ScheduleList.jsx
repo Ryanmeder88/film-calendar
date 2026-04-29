@@ -90,7 +90,24 @@ export default function ScheduleList({ films, weekOffset, activeReleaseTypes, ac
                   </span>
                   <div className="schedule-main">
                     <span className="schedule-matchup">{f.title}</span>
-                    {f.rating && <span className="schedule-meta">{f.rating}</span>}
+                    {(f.rating || f.rtScore || f.metascore) && (
+                      <div className="schedule-meta">
+                        {f.rating && <span>{f.rating}</span>}
+                        {f.rtScore && (() => {
+                          const pct = parseInt(f.rtScore, 10);
+                          return (
+                            <span className={`sl-rt ${pct >= 60 ? 'sl-rt-fresh' : 'sl-rt-rotten'}`}>
+                              🍅 {f.rtScore}
+                            </span>
+                          );
+                        })()}
+                        {f.metascore && f.metascore !== 'N/A' && (() => {
+                          const mc = parseInt(f.metascore, 10);
+                          const cls = mc >= 61 ? 'sl-mc-green' : mc >= 40 ? 'sl-mc-yellow' : 'sl-mc-red';
+                          return <span className={`sl-mc ${cls}`}>{f.metascore}</span>;
+                        })()}
+                      </div>
+                    )}
                   </div>
                   <span className="schedule-platform">{f.platform}</span>
                 </div>

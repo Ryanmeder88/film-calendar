@@ -645,12 +645,34 @@ body {
 }
 
 .schedule-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-size: 11px;
   color: var(--muted);
-  white-space: nowrap;
+  flex-wrap: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
+
+.sl-rt {
+  font-size: 11px;
+  white-space: nowrap;
+}
+.sl-rt-fresh  { color: #e8320a; }
+.sl-rt-rotten { color: #8b5e3c; }
+
+.sl-mc {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 4px;
+  border-radius: 3px;
+  color: #fff;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sl-mc-green  { background: #4a9c45; }
+.sl-mc-yellow { background: #c4a000; }
+.sl-mc-red    { background: #c0392b; }
 
 .schedule-platform {
   font-size: 11px;

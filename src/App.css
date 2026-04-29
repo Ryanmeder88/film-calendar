@@ -660,7 +660,7 @@ body {
 .sl-rt-rotten { color: #15803d; }
 .sl-rt-rotten .rt-icon,
 .event-rt.rt-rotten .rt-icon,
-.modal-score.rt.rt-rotten .rt-icon { filter: hue-rotate(100deg) saturate(1.5); }
+.modal-score.rt.rt-rotten .rt-icon { filter: sepia(1) saturate(4) hue-rotate(80deg); }
 
 .sl-mc {
   font-size: 10px;

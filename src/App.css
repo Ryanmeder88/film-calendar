@@ -325,8 +325,6 @@ body {
 }
 .event-rt.rt-fresh { color: #b91c1c; }
 .event-rt.rt-rotten { color: #15803d; }
-.event-rt.rt-rotten .rt-icon,
-.modal-score.rt.rt-rotten .rt-icon { filter: hue-rotate(100deg) saturate(1.5); }
 
 .event-meta {
   display: inline-block;

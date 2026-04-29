@@ -97,7 +97,7 @@ export default function ScheduleList({ films, weekOffset, activeReleaseTypes, ac
                           const pct = parseInt(f.rtScore, 10);
                           return (
                             <span className={`sl-rt ${pct >= 60 ? 'sl-rt-fresh' : 'sl-rt-rotten'}`}>
-                              🍅 {f.rtScore}
+                              {pct >= 60 ? '🍅' : '🫟'} {f.rtScore}
                             </span>
                           );
                         })()}

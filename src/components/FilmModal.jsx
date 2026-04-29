@@ -130,7 +130,7 @@ export default function FilmModal({ film, onClose }) {
                 <div className="modal-scores">
                   {rtPct !== null && (
                     <span className={`modal-score rt ${rtFresh ? 'rt-fresh' : 'rt-rotten'}`}>
-                      <span className="rt-icon">🍅</span>{' '}{film.rtScore}
+                      <span className="rt-icon">{rtFresh ? '🍅' : '🫟'}</span>{' '}{film.rtScore}
                     </span>
                   )}
                   {film.imdbRating && <span className="modal-score imdb">⭐ {film.imdbRating}</span>}

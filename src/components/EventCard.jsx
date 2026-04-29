@@ -43,7 +43,7 @@ export default function EventCard({ film, onClick }) {
       <div className="event-scores">
         {rtPct !== null && (
           <span className={`event-rt ${rtFresh ? 'rt-fresh' : 'rt-rotten'}`}>
-            <span className="rt-icon">🍅</span>{' '}{film.rtScore}
+            <span className="rt-icon">{rtFresh ? '🍅' : '🫟'}</span>{' '}{film.rtScore}
           </span>
         )}
         {metaScore !== null && (

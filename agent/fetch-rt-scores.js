@@ -59,12 +59,11 @@ function dateStr(d) {
 }
 
 // Films releasing within the embargo-lifted window:
-// up to 7 days ago (may still be in early run) to 14 days from now
-// (embargos typically lift 1–2 weeks before release).
+// Today through 7 days from now — only films opening imminently.
 async function getFilmsInWindow() {
   const today = new Date();
-  const from  = new Date(today.getTime() - 7  * 86400000);
-  const to    = new Date(today.getTime() + 14 * 86400000);
+  const from  = new Date(today.getTime());
+  const to    = new Date(today.getTime() + 7 * 86400000);
 
   const pages = await Promise.all([1, 2, 3].map(page =>
     tmdbGet(

@@ -312,14 +312,10 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       };
     });
 
-  // Deduplicate at the event level: skip streaming films that already resolved
-  // as a theatrical event. Raw-ID deduplication was too aggressive — it excluded
-  // streaming-only films that happened to appear in the supplementary theatrical
-  // query but then returned null (no type-2/3 date to anchor on).
-  const resolvedTheatricalIds = new Set(events.filter(Boolean).map(e => e.movieId));
-
+  // No deduplication against theatrical — a film can appear as both theatrical
+  // and streaming if it has both release types (e.g. Swapped: limited + Netflix same day).
+  // Keys are already unique between the two paths so React won't complain.
   const streamingEvents = streamingRaw.flatMap(m => {
-    if (resolvedTheatricalIds.has(m.id)) return []; // already on calendar as theatrical
     const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
     const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
     const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;

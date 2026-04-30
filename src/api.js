@@ -207,6 +207,7 @@ async function fetchStreaming(windowStart, cutoff) {
       `/discover/movie?with_release_type=4&region=US` +
       `&release_date.gte=${dateStr(windowStart)}&release_date.lte=${dateStr(cutoff)}` +
       `&with_original_language=en&without_genres=99,10770` +
+      `&without_keywords=9716,373333,362573,356038,331674,9917` +
       `&sort_by=popularity.desc&popularity.gte=${STREAMING_MIN_POPULARITY}&page=${page}`
     ))
   ));

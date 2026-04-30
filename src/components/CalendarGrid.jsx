@@ -29,7 +29,7 @@ function formatMonthDay(date) {
 
 function filterFilms(films, activeReleaseTypes, activeRatings) {
   return films.filter(f => {
-    const typeMatch = activeReleaseTypes.size === 0 || activeReleaseTypes.has(f.releaseType);
+    const typeMatch = activeReleaseTypes.size === 0 || f.releaseTypes.some(t => activeReleaseTypes.has(t));
     const ratingMatch = activeRatings.size === 0 || activeRatings.has(f.rating);
     return typeMatch && ratingMatch;
   });

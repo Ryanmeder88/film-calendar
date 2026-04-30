@@ -55,8 +55,8 @@ export default function EventCard({ film, onClick }) {
       {film.releaseType === 'theatrical-rerelease' && (
         <span className="event-rerelease">Re-release</span>
       )}
-      {film.platform && (
-        <span className="event-platform">{film.platform}</span>
+      {film.platforms?.length > 0 && (
+        <span className="event-platform">{film.platforms.join(' · ')}</span>
       )}
     </div>
   );

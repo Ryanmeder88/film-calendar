@@ -117,7 +117,9 @@ export default function FilmModal({ film, onClose }) {
               <span className="modal-chip-neutral">
                 {film.runtime > 0 ? `${film.runtime} min` : 'Runtime TBD'}
               </span>
-              <span className="modal-chip-neutral">{film.platform}</span>
+              {(film.platforms ?? [film.platform]).map(p => (
+                <span key={p} className="modal-chip-neutral">{p}</span>
+              ))}
             </div>
 
             {/* Scores */}

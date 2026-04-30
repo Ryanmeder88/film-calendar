@@ -293,6 +293,8 @@ export async function fetchAllFilms(anchorDate = new Date()) {
         primaryGenre,
         rating,
         releaseType,
+        releaseTypes: [releaseType],
+        platforms: [platform],
         platform,
         posterPath: m.poster_path,
         popularity: m.popularity,
@@ -312,29 +314,44 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       };
     });
 
-  // No deduplication against theatrical — a film can appear as both theatrical
-  // and streaming if it has both release types (e.g. Swapped: limited + Netflix same day).
-  // Keys are already unique between the two paths so React won't complain.
-  const streamingEvents = streamingRaw.flatMap(m => {
-    const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
-    const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
-    const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;
-
+  // Build streaming events, collecting them in a map by movieId
+  const streamingByMovieId = new Map();
+  for (const m of streamingRaw) {
+    const { releaseDates = [] } = certMap[m.id] ?? {};
     const usRelDates = releaseDates.find(r => r.iso_3166_1 === 'US')?.release_dates ?? [];
     const digitalEntry = usRelDates.find(r => {
       if (r.type !== 4) return false;
       const d = new Date(r.release_date.slice(0, 10) + 'T00:00:00');
       return d >= windowStart && d <= cutoff;
     });
-    if (!digitalEntry) return [];
-
+    if (!digitalEntry) continue;
     const platform = digitalEntry.note?.trim() ?? null;
-    if (!platform || !STREAMING_PLATFORMS.has(platform)) return [];
+    if (!platform || !STREAMING_PLATFORMS.has(platform)) continue;
+    streamingByMovieId.set(m.id, { platform, date: new Date(digitalEntry.release_date.slice(0, 10) + 'T00:00:00') });
+  }
 
-    const date = new Date(digitalEntry.release_date.slice(0, 10) + 'T00:00:00');
+  // Merge streaming info into theatrical events where the same film has both
+  const theatricalEvents = events.filter(Boolean).map(e => {
+    const streaming = streamingByMovieId.get(e.movieId);
+    if (!streaming) return e;
+    streamingByMovieId.delete(e.movieId); // consumed — won't also appear as standalone streaming
+    return {
+      ...e,
+      releaseTypes: [...e.releaseTypes, 'streaming'],
+      platforms: [...e.platforms, streaming.platform],
+    };
+  });
+
+  // Remaining streaming entries have no theatrical counterpart — build full events
+  const streamingOnlyEvents = [];
+  for (const m of streamingRaw) {
+    if (!streamingByMovieId.has(m.id)) continue; // already merged into theatrical
+    const { platform, date } = streamingByMovieId.get(m.id);
+    const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
+    const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
+    const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;
     const genres = resolveGenres(m.genre_ids);
-
-    return [{
+    streamingOnlyEvents.push({
       key: `tmdb__${m.id}__streaming`,
       movieId: m.id,
       date,
@@ -344,7 +361,9 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       primaryGenre: genres[0] ?? 'Film',
       rating: parseUsCertification(releaseDates),
       releaseType: 'streaming',
+      releaseTypes: ['streaming'],
       platform,
+      platforms: [platform],
       posterPath: m.poster_path,
       popularity: m.popularity,
       director,
@@ -360,10 +379,10 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       boxOffice,
       imdbId,
       isPast: date < today,
-    }];
-  });
+    });
+  }
 
-  return [...events.filter(Boolean), ...streamingEvents]
+  return [...theatricalEvents, ...streamingOnlyEvents]
     .filter(e => e.date >= windowStart && e.date <= cutoff)
     .sort((a, b) => a.date - b.date);
 }

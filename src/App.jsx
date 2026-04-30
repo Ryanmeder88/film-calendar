@@ -66,7 +66,7 @@ export default function App() {
     });
   }
 
-  const presentReleaseTypes = new Set(films.map(f => f.releaseType));
+  const presentReleaseTypes = new Set(films.flatMap(f => f.releaseTypes));
   const presentRatings = new Set(films.map(f => f.rating).filter(Boolean));
 
   const dateDisplayText = anchorDate

@@ -27,7 +27,7 @@ function formatDayHeader(date, today) {
 
 function filterFilms(films, activeReleaseTypes, activeRatings) {
   return films.filter(f => {
-    const typeMatch = activeReleaseTypes.size === 0 || activeReleaseTypes.has(f.releaseType);
+    const typeMatch = activeReleaseTypes.size === 0 || f.releaseTypes.some(t => activeReleaseTypes.has(t));
     const ratingMatch = activeRatings.size === 0 || activeRatings.has(f.rating);
     return typeMatch && ratingMatch;
   });
@@ -109,7 +109,7 @@ export default function ScheduleList({ films, weekOffset, activeReleaseTypes, ac
                       </div>
                     )}
                   </div>
-                  <span className="schedule-platform">{f.platform}</span>
+                  <span className="schedule-platform">{(f.platforms ?? [f.platform]).join(' · ')}</span>
                 </div>
               );
             })}

@@ -238,11 +238,7 @@ export async function fetchAllFilms(anchorDate = new Date()) {
     fetchStreaming(windowStart, cutoff),
   ]);
 
-  // Deduplicate streaming against theatrical (a film may appear in both)
-  const theatricalIds = new Set(theatrical.map(m => m.id));
-  const streaming = streamingRaw.filter(m => !theatricalIds.has(m.id));
-
-  const uniqueIds = [...new Set([...theatrical, ...streaming].map(m => m.id))];
+  const uniqueIds = [...new Set([...theatrical, ...streamingRaw].map(m => m.id))];
   const certMap = await fetchCertifications(uniqueIds);
 
   const imdbIds = uniqueIds.map(id => certMap[id]?.imdbId).filter(Boolean);
@@ -316,7 +312,14 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       };
     });
 
-  const streamingEvents = streaming.flatMap(m => {
+  // Deduplicate at the event level: skip streaming films that already resolved
+  // as a theatrical event. Raw-ID deduplication was too aggressive — it excluded
+  // streaming-only films that happened to appear in the supplementary theatrical
+  // query but then returned null (no type-2/3 date to anchor on).
+  const resolvedTheatricalIds = new Set(events.filter(Boolean).map(e => e.movieId));
+
+  const streamingEvents = streamingRaw.flatMap(m => {
+    if (resolvedTheatricalIds.has(m.id)) return []; // already on calendar as theatrical
     const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
     const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
     const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;

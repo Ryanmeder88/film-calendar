@@ -44,6 +44,24 @@ export const GENRE_COLORS = {
 // Minimum popularity for theatrical releases
 export const THEATRICAL_MIN_POPULARITY = 1;
 
+// Minimum popularity for streaming debuts
+export const STREAMING_MIN_POPULARITY = 2;
+
+// Streaming platforms matched against TMDB release_date note field.
+// Only films whose type-4 US note exactly matches one of these are included.
+export const STREAMING_PLATFORMS = new Set([
+  'Netflix',
+  'Prime Video',
+  'Amazon Prime Video',
+  'Hulu',
+  'Disney+',
+  'Apple TV+',
+  'Apple TV',
+  'Peacock',
+  'Max',
+  'HBO Max',
+]);
+
 // MPAA ratings in display order
 export const RATINGS = ['G', 'PG', 'PG-13', 'R', 'NC-17'];
 
@@ -60,4 +78,5 @@ export const RELEASE_TYPES = [
   { value: 'theatrical-wide',      label: 'Wide',       bg: '#1F2937', text: '#fff' },
   { value: 'theatrical-limited',   label: 'Limited',    bg: '#4B5563', text: '#fff' },
   { value: 'theatrical-rerelease', label: 'Re-release', bg: '#92400E', text: '#fff' },
+  { value: 'streaming',            label: 'Streaming',  bg: '#0f766e', text: '#fff' },
 ];

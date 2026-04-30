@@ -1,4 +1,4 @@
-import { TMDB_GENRE_MAP, THEATRICAL_MIN_POPULARITY } from './config.js';
+import { TMDB_GENRE_MAP, THEATRICAL_MIN_POPULARITY, STREAMING_MIN_POPULARITY, STREAMING_PLATFORMS } from './config.js';
 
 const BASE = '/tmdb-api';
 
@@ -201,6 +201,27 @@ async function fetchOmdbRatings(imdbIds) {
   return map;
 }
 
+async function fetchStreaming(windowStart, cutoff) {
+  const pages = await Promise.allSettled([1, 2, 3].map(page =>
+    limit(() => tmdbGet(
+      `/discover/movie?with_release_type=4&region=US` +
+      `&release_date.gte=${dateStr(windowStart)}&release_date.lte=${dateStr(cutoff)}` +
+      `&with_original_language=en&without_genres=99,10770` +
+      `&sort_by=popularity.desc&popularity.gte=${STREAMING_MIN_POPULARITY}&page=${page}`
+    ))
+  ));
+
+  const films = [];
+  const seen = new Set();
+  for (const r of pages) {
+    if (r.status !== 'fulfilled') continue;
+    for (const m of r.value.results ?? []) {
+      if (!seen.has(m.id)) { seen.add(m.id); films.push(m); }
+    }
+  }
+  return films;
+}
+
 export async function fetchAllFilms(anchorDate = new Date()) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -211,9 +232,16 @@ export async function fetchAllFilms(anchorDate = new Date()) {
 
   const cutoff = new Date(windowStart.getTime() + 28 * 24 * 60 * 60 * 1000);
 
-  const theatrical = await fetchTheatrical(windowStart, cutoff);
+  const [theatrical, streamingRaw] = await Promise.all([
+    fetchTheatrical(windowStart, cutoff),
+    fetchStreaming(windowStart, cutoff),
+  ]);
 
-  const uniqueIds = [...new Set(theatrical.map(m => m.id))];
+  // Deduplicate streaming against theatrical (a film may appear in both)
+  const theatricalIds = new Set(theatrical.map(m => m.id));
+  const streaming = streamingRaw.filter(m => !theatricalIds.has(m.id));
+
+  const uniqueIds = [...new Set([...theatrical, ...streaming].map(m => m.id))];
   const certMap = await fetchCertifications(uniqueIds);
 
   const imdbIds = uniqueIds.map(id => certMap[id]?.imdbId).filter(Boolean);
@@ -287,8 +315,55 @@ export async function fetchAllFilms(anchorDate = new Date()) {
       };
     });
 
-  return events
-    .filter(Boolean)
+  const streamingEvents = streaming.flatMap(m => {
+    const { releaseDates = [], director = null, cast = [], tagline = null, backdropPath = null, imdbId = null, budget = null } = certMap[m.id] ?? {};
+    const omdb = imdbId ? (omdbMap[imdbId] ?? {}) : {};
+    const { rtScore = null, imdbRating = null, metascore = null, awards = null, boxOffice = null } = omdb;
+
+    const usRelDates = releaseDates.find(r => r.iso_3166_1 === 'US')?.release_dates ?? [];
+    const digitalEntry = usRelDates.find(r => {
+      if (r.type !== 4) return false;
+      const d = new Date(r.release_date.slice(0, 10) + 'T00:00:00');
+      return d >= windowStart && d <= cutoff;
+    });
+    if (!digitalEntry) return [];
+
+    const platform = digitalEntry.note?.trim() ?? null;
+    if (!platform || !STREAMING_PLATFORMS.has(platform)) return [];
+
+    const date = new Date(digitalEntry.release_date.slice(0, 10) + 'T00:00:00');
+    const genres = resolveGenres(m.genre_ids);
+
+    return [{
+      key: `tmdb__${m.id}__streaming`,
+      movieId: m.id,
+      date,
+      title: m.title,
+      overview: m.overview ?? '',
+      genres,
+      primaryGenre: genres[0] ?? 'Film',
+      rating: parseUsCertification(releaseDates),
+      releaseType: 'streaming',
+      platform,
+      posterPath: m.poster_path,
+      popularity: m.popularity,
+      director,
+      cast,
+      tagline,
+      backdropPath,
+      runtime: certMap[m.id]?.runtime ?? null,
+      budget,
+      rtScore,
+      imdbRating,
+      metascore,
+      awards,
+      boxOffice,
+      imdbId,
+      isPast: date < today,
+    }];
+  });
+
+  return [...events.filter(Boolean), ...streamingEvents]
     .filter(e => e.date >= windowStart && e.date <= cutoff)
     .sort((a, b) => a.date - b.date);
 }

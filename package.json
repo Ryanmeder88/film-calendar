@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "start": "node server.js"
   },
+  "engines": {
+    "node": ">=22.23.4"
+  },
   "dependencies": {
     "express": "^5.2.1",
     "http-proxy-middleware": "^3.0.5",
